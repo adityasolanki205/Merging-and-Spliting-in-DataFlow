@@ -110,10 +110,9 @@ Below are the steps to setup the enviroment and run the codes:
           help='Output file to write results to.')
         known_args, pipeline_args = parser.parse_known_args(argv)
         options = PipelineOptions(pipeline_args)
-        TOPIC ="projects/trusty-field-283517/topics/german_credit_data"
         with beam.Pipeline(options=PipelineOptions()) as p:
             encoded_data = ( p 
-                             | 'Read data' >> beam.io.ReadFromPubSub(topic=TOPIC).with_output_types(bytes) 
+                             | 'Read data' >> beam.io.ReadFromPubSub(topic=known_args.input_topic).with_output_types(bytes) 
                            )
                     data = ( encoded_data
                              | 'Decode' >> beam.Map(lambda x: x.decode('utf-8') ) 
@@ -122,7 +121,7 @@ Below are the steps to setup the enviroment and run the codes:
         run()
 ``` 
 
-4. **Reading the Data**: Now we will go step by step to create a pipeline starting with reading the data. The data is read using **beam.io.ReadFromText()**. Here we will just read the input values and save it in a file. The output is stored in text file named simpleoutput.
+4. **Reading the Data from Cloud Storage**: Now we will go step by step to create a pipeline starting with reading the data. The data is read using **beam.io.ReadFromText()**. Here we will just read the input values and save it in a file. The output is stored in text file named simpleoutput.
 
 ```python
     def run(argv=None, save_main_session=True):
