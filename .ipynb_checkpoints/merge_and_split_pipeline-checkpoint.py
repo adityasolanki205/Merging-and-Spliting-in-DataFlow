@@ -38,33 +38,6 @@ class Split(beam.DoFn):
             'Classification': str(Classification)
         }]
 
-class Batch_Split(beam.DoFn):
-    def process(self, element):
-        Existing_account,Duration_month,Credit_history,Purpose,Credit_amount,Saving,Employment_duration,Installment_rate,Personal_status,Debtors,Residential_Duration,Property,Age,Installment_plans,Housing,Number_of_credits,Job,Liable_People,Telephone,Foreign_worker,Classification = element.split(' ')
-        return [{
-            'Existing_account': str(Existing_account),
-            'Duration_month': str(Duration_month),
-            'Credit_history': str(Credit_history),
-            'Purpose': str(Purpose),
-            'Credit_amount': str(Credit_amount),
-            'Saving': str(Saving),
-            'Employment_duration':str(Employment_duration),
-            'Installment_rate': str(Installment_rate),
-            'Personal_status': str(Personal_status),
-            'Debtors': str(Debtors),
-            'Residential_Duration': str(Residential_Duration),
-            'Property': str(Property),
-            'Age': str(Age),
-            'Installment_plans':str(Installment_plans),
-            'Housing': str(Housing),
-            'Number_of_credits': str(Number_of_credits),
-            'Job': str(Job),
-            'Liable_People': str(Liable_People),
-            'Telephone': str(Telephone),
-            'Foreign_worker': str(Foreign_worker),
-            'Classification': str(Classification)
-        }]
-
 def Filter_Data(data):
     #This will remove rows the with Null values in any one of the columns
     return data['Purpose'] !=  'NULL' and len(data['Purpose']) <= 3  and  data['Classification'] !=  'NULL' and data['Property'] !=  'NULL' and data['Personal_status'] != 'NULL' and data['Existing_account'] != 'NULL' and data['Credit_amount'] != 'NULL' and data['Installment_plans'] != 'NULL'
