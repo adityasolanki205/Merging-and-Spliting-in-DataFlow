@@ -9,7 +9,6 @@ from apache_beam.options.pipeline_options import PipelineOptions
 import argparse
 from google.cloud import pubsub_v1
 
-Classification_type = [1,2]
 SCHEMA='Duration_month:INTEGER,Credit_history:STRING,Credit_amount:FLOAT,Saving:STRING,Employment_duration:STRING,Installment_rate:INTEGER,Personal_status:STRING,Debtors:STRING,Residential_Duration:INTEGER,Property:STRING,Age:INTEGER,Installment_plans:STRING,Housing:STRING,Number_of_credits:INTEGER,Job:STRING,Liable_People:INTEGER,Telephone:STRING,Foreign_worker:STRING,Classification:INTEGER,Month:STRING,Days:INTEGER,File_Month:STRING,Version:INTEGER'
 
 class Split(beam.DoFn):
@@ -121,6 +120,7 @@ def Del_Unwanted(data):
     return data
 
 def By_Classification(data , n):
+    Classification_type = [1,2]
     return Classification_type.index(data['Classification'])
 
 def run(argv=None, save_main_session=True):
@@ -140,20 +140,11 @@ def run(argv=None, save_main_session=True):
         dest='project',
         help='Project used for this Pipeline'
     )
-    parser.add_argument(
-        '--output_file',
-        dest='output_file',
-        help='Bucket in which Pipeline has to be written'
-    )
     known_args, pipeline_args = parser.parse_known_args(argv)
-    Options = PipelineOptions(pipeline_args)
-    TOPIC ="projects/trusty-field-283517/topics/german_credit_data"
+    Options = PipelineOptions()
     with beam.Pipeline(options=Options) as p:
-        '''Topic_Input   =  (p  
-                         | 'Read from Pub Sub' >> beam.io.ReadFromPubSub(topic=known_args.input_topic).with_output_types(bytes)
-                         )'''
         Topic_Input   =  (p  
-                         | 'Read from Pub Sub' >> beam.io.ReadFromPubSub(topic=TOPIC).with_output_types(bytes)
+                         | 'Read from Pub Sub' >> beam.io.ReadFromPubSub(topic=known_args.input_topic).with_output_types(bytes)
                          )
         File_Input  =    (p
                          | 'Read from Cloud Storage Bucket' >> beam.io.ReadFromText(known_args.input_file)
@@ -182,20 +173,25 @@ def run(argv=None, save_main_session=True):
         Clean_Data  =    ( Wrangled_data
                          | 'Deleting Unwanted Columns' >> beam.Map(Del_Unwanted)
                          ) 
-        Partition_for_GCS, Partition_for_BQ = ( Clean_Data
+        
+        Batch_BQ_Table, Streaming_BQ_Table = ( Clean_Data
                          | 'Partitioning Data' >> beam.Partition(By_Classification, 2)
                          )
         
-        BQ_Output =      ( Partition_for_BQ 
-                         | 'Inserting Data in BigQuery' >> beam.io.WriteToBigQuery(
+        Streaming_Output = ( Streaming_BQ_Table 
+                         | 'Inserting Streaming Data in BigQuery' >> beam.io.WriteToBigQuery(
                             '{0}:GermanCredit.GermanCreditTable'.format(known_args.project),
                              schema=SCHEMA,
                              write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND 
                              )
                          ) 
-        GCS_Output =     ( Partition_for_GCS 
-                         | 'Writing a file in GCS' >> beam.io.WriteToText(known_args.output_file)                  
-                         )
+        Batch_Output =   ( Batch_BQ_Table 
+                         | 'Inserting Batch Data in BigQuery' >> beam.io.WriteToBigQuery(
+                            '{0}:GermanCredit.GermanCreditBatchTable'.format(known_args.project),
+                             schema=SCHEMA,
+                             write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND 
+                             )
+                         ) 
 if __name__ == '__main__':
     run()
 
