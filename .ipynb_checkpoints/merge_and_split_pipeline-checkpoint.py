@@ -142,9 +142,10 @@ def run(argv=None, save_main_session=True):
     )
     known_args, pipeline_args = parser.parse_known_args(argv)
     Options = PipelineOptions()
+    TOPIC ="projects/trusty-field-283517/topics/german_credit_data"
     with beam.Pipeline(options=Options) as p:
         Topic_Input   =  (p  
-                         | 'Read from Pub Sub' >> beam.io.ReadFromPubSub(topic=known_args.input_topic).with_output_types(bytes)
+                         | 'Read from Pub Sub' >> beam.io.ReadFromPubSub(topic=TOPIC).with_output_types(bytes)
                          )
         File_Input  =    (p
                          | 'Read from Cloud Storage Bucket' >> beam.io.ReadFromText(known_args.input_file)
@@ -173,7 +174,6 @@ def run(argv=None, save_main_session=True):
         Clean_Data  =    ( Wrangled_data
                          | 'Deleting Unwanted Columns' >> beam.Map(Del_Unwanted)
                          ) 
-        
         Batch_BQ_Table, Streaming_BQ_Table = ( Clean_Data
                          | 'Partitioning Data' >> beam.Partition(By_Classification, 2)
                          )
@@ -194,4 +194,5 @@ def run(argv=None, save_main_session=True):
                          ) 
 if __name__ == '__main__':
     run()
+     
 
