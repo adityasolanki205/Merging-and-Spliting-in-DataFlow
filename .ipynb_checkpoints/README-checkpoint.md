@@ -1,14 +1,16 @@
-# Streaming Pipeline using DataFlow
-This is one of the **Introduction to Apache Beam using Python** Repository. Here we will try to learn basics of Apache Beam to create **Streaming** pipelines. We will learn step by step how to create a streaming pipeline using [German Credit Risk](https://www.kaggle.com/uciml/german-credit). The complete process is divided into 8 parts:
+# Merging and Spliting using DataFlow
+This is one of the **Introduction to Apache Beam using Python** Repository. Here we will try to learn basics of Apache Beam to create  pipelines while merging and spliting data. We will learn step by step how to create a streaming pipeline using [German Credit Risk](https://www.kaggle.com/uciml/german-credit). The complete process is divided into 8 parts:
 
 1. **Generating Streaming Data**
-2. **Reading Data from Pub Sub**
+2. **Reading Data from Pub Sub and Google Cloud Storage**
 3. **Parsing the data**
-4. **Filtering the data**
-5. **Performing Type Convertion**
-6. **Data wrangling**
-7. **Deleting Unwanted Columns**
-8. **Inserting Data in Bigquery**
+4. **Merging the Data**
+5. **Filtering the data**
+6. **Performing Type Convertion**
+7. **Data wrangling**
+8. **Deleting Unwanted Columns**
+9. **Spliting the Data**
+10. **Inserting Data in Bigquery**
 
 
 ## Motivation
@@ -30,7 +32,7 @@ For the last two years, I have been part of a great learning curve wherein I hav
 
 ```bash
     # clone this repo:
-    git clone https://github.com/adityasolanki205/Streaming-Pipeline-using-Dataflow.git
+    git clone https://github.com/adityasolanki205/Merging-and-Spliting-in-DataFlow.git
 ```
 
 ## Pipeline Construction
@@ -43,7 +45,7 @@ Below are the steps to setup the enviroment and run the codes:
 
 ```bash
     # clone this repo:
-    git clone https://github.com/adityasolanki205/Batch-Processing-Pipeline-using-DataFlow.git
+    git clone https://github.com/adityasolanki205/Merging-and-Spliting-in-DataFlow.git
 ```
 
 3. **Generating Streaming Data**: We need to generate streaming data that can be published to Pub Sub. Then those messages will be picked to be processed by the pipeline. To generate data we will use **random()** library to create input messages. Using the generating_data.py we will be able to generate random data in the required format. This generated data will be published to Pub/Sub using publish_to_pubsub.py. Here we will use PublisherClient object, add the path to the topic using the topic_path method and call the publish_to_pubsub() function while passing the topic_path and data.
@@ -120,7 +122,32 @@ Below are the steps to setup the enviroment and run the codes:
         run()
 ``` 
 
-4. **Parsing the data**: After reading the input from Pub-Sub we will split the data using split(). Data is segregated into different columns to be used in further steps. We will **ParDo()** to create a split function. The output of this step is present in SplitPardo text file.
+4. **Reading the Data**: Now we will go step by step to create a pipeline starting with reading the data. The data is read using **beam.io.ReadFromText()**. Here we will just read the input values and save it in a file. The output is stored in text file named simpleoutput.
+
+```python
+    def run(argv=None, save_main_session=True):
+        parser = argparse.ArgumentParser()
+        parser.add_argument(
+          '--input',
+          dest='input',
+          help='Input file to process')
+        parser.add_argument(
+          '--output',
+          dest='output',
+          default='../output/result.txt',
+          help='Output file to write results to.')
+        known_args, pipeline_args = parser.parse_known_args(argv)
+        options = PipelineOptions(pipeline_args)
+        with beam.Pipeline(options=PipelineOptions()) as p:
+            data = (p 
+                         | beam.io.ReadFromText(known_args.input)
+                         | 'Writing output' >> beam.io.WriteToText(known_args.output)
+                   ) 
+    if __name__ == '__main__':
+        run()
+``` 
+
+4. **Parsing the data**: After reading the input from Pub-Sub and Google Cloud Storage we will split the data using split(). Data is segregated into different columns to be used in further steps. We will **ParDo()** to create a split function. The output of this step is present in SplitPardo text file.
 
 ```python
     class Split(beam.DoFn):
@@ -173,19 +200,56 @@ Below are the steps to setup the enviroment and run the codes:
     def run(argv=None, save_main_session=True):
         ...
         with beam.Pipeline(options=PipelineOptions()) as p:
-            encoded_data = ( p 
-                     | 'Read data' >> beam.io.ReadFromPubSub(topic=TOPIC).with_output_types(bytes))
-            data   = ( encoded_data
-                     | 'Decode' >> beam.Map(lambda x: x.decode('utf-8'))) 
-            parsed_data = (data 
-                     | 'Parsing Data' >> beam.ParDo(Split())
-                     | 'Writing output' >> beam.io.WriteToText(known_args.output))
+            Topic_Input   =  (p  
+                         | 'Read from Pub Sub' >> beam.io.ReadFromPubSub
+                            (topic=known_args.input_topic).with_output_types(bytes)
+                         )
+            File_Input  =    (p
+                             | 'Read from Cloud Storage Bucket' >> beam.io.ReadFromText(known_args.input_file)
+                             )
+            Decoded_Online_Input =(Topic_Input 
+                             | 'Decodeing the input Message' >> beam.Map(lambda x: x.decode('utf-8'))
+                             )
+            Spliting_Online_Input = (Decoded_Online_Input
+                             | 'Spliting Streaming Input' >> beam.ParDo(Split())
+                             )
+            Spliting_Batch_Input = (File_Input
+                             | 'Spliting Batch Input' >> beam.ParDo(Split())
             
     if __name__ == '__main__':
         run()
 ``` 
+5. **Mergeing the data**: Now we will merge the data by using **Flatten()**. It Merges the data into one stream.
 
-5. **Filtering the data**: Now we will clean the data by removing all the rows having Null values from the dataset. We will use **Filter()** to return only valid rows with no Null values. Output of this step is saved in the file named Filtered_data.
+```python
+    ...
+    def run(argv=None, save_main_session=True):
+        ...
+        with beam.Pipeline(options=PipelineOptions()) as p:
+            Topic_Input   =  (p  
+                         | 'Read from Pub Sub' >> beam.io.ReadFromPubSub
+                            (topic=known_args.input_topic).with_output_types(bytes)
+                         )
+            File_Input  =    (p
+                             | 'Read from Cloud Storage Bucket' >> beam.io.ReadFromText(known_args.input_file)
+                             )
+            Decoded_Online_Input =(Topic_Input 
+                             | 'Decodeing the input Message' >> beam.Map(lambda x: x.decode('utf-8'))
+                             )
+            Spliting_Online_Input = (Decoded_Online_Input
+                             | 'Spliting Streaming Input' >> beam.ParDo(Split())
+                             )
+            Spliting_Batch_Input = (File_Input
+                             | 'Spliting Batch Input' >> beam.ParDo(Split())
+                             )
+            Merged_Inputs =  ((Spliting_Online_Input, Spliting_Batch_Input) 
+                             | 'Mergeing Inputs' >> beam.Flatten()
+            
+    if __name__ == '__main__':
+        run()
+```
+
+6. **Filtering the data**: Now we will clean the data by removing all the rows having Null values from the dataset. We will use **Filter()** to return only valid rows with no Null values. Output of this step is saved in the file named Filtered_data.
 
 ```python
     ...
@@ -203,21 +267,34 @@ Below are the steps to setup the enviroment and run the codes:
     def run(argv=None, save_main_session=True):
         ...
         with beam.Pipeline(options=PipelineOptions()) as p:
-            encoded_data = ( p 
-                     | 'Read data' >> beam.io.ReadFromPubSub(topic=TOPIC).with_output_types(bytes))
-            data   = ( encoded_data
-                     | 'Decode' >> beam.Map(lambda x: x.decode('utf-8'))) 
-            parsed_data = (data 
-                     | 'Parsing Data' >> beam.ParDo(Split()))
-            filtered_data = (parsed_data
-                     | 'Filtering Data' >> beam.Filter(Filter_Data)          
-                     | 'Writing output' >> beam.io.WriteToText(known_args.output))
-
+            with beam.Pipeline(options=Options) as p:
+            Topic_Input   =  (p  
+                             | 'Read from Pub Sub' >> beam.io.ReadFromPubSub
+                              (topic=known_args.input_topic).with_output_types(bytes)
+                             )
+            File_Input  =    (p
+                             | 'Read from Cloud Storage Bucket' >> beam.io.ReadFromText(known_args.input_file)
+                             )
+            Decoded_Online_Input =(Topic_Input 
+                             | 'Decodeing the input Message' >> beam.Map(lambda x: x.decode('utf-8'))
+                             )
+            Spliting_Online_Input = (Decoded_Online_Input
+                             | 'Spliting Streaming Input' >> beam.ParDo(Split())
+                             )
+            Spliting_Batch_Input = (File_Input
+                             | 'Spliting Batch Input' >> beam.ParDo(Split())
+                             )
+            Merged_Inputs =  ((Spliting_Online_Input, Spliting_Batch_Input) 
+                             | 'Mergeing Inputs' >> beam.Flatten()
+                             )
+            Filtered_Data =  ( Merged_Inputs 
+                             | 'Filtering Data' >> beam.Filter(Filter_Data)
+                             )
     if __name__ == '__main__':
         run()
 ```
 
-6. **Performing Type Convertion**: After Filtering we will convert the datatype of numeric columns from String to Int or Float datatype. Here we will use **Map()** to apply the Convert_Datatype(). The output of this step is saved in Convert_datatype text file.
+7. **Performing Type Convertion**: After Filtering we will convert the datatype of numeric columns from String to Int or Float datatype. Here we will use **Map()** to apply the Convert_Datatype(). The output of this step is saved in Convert_datatype text file.
 
 ```python
     ... 
@@ -234,24 +311,38 @@ Below are the steps to setup the enviroment and run the codes:
     ...
     def run(argv=None, save_main_session=True):
         ...
-        with beam.Pipeline(options=PipelineOptions()) as p:
-            encoded_data = ( p 
-                     | 'Read data' >> beam.io.ReadFromPubSub(topic=TOPIC).with_output_types(bytes))
-            data   = ( encoded_data
-                     | 'Decode' >> beam.Map(lambda x: x.decode('utf-8'))) 
-            parsed_data = (data 
-                     | 'Parsing Data' >> beam.ParDo(Split()))
-            filtered_data = (parsed_data
-                     | 'Filtering Data' >> beam.Filter(Filter_Data))
-            Converted_data = (filtered_data
-                     | 'Convert Datatypes' >> beam.Map(Convert_Datatype)
-                     | 'Writing output' >> beam.io.WriteToText(known_args.output))
+        with beam.Pipeline(options=Options) as p:
+            Topic_Input   =  (p  
+                             | 'Read from Pub Sub' >> beam.io.ReadFromPubSub
+                              (topic=known_args.input_topic).with_output_types(bytes)
+                             )
+            File_Input  =    (p
+                             | 'Read from Cloud Storage Bucket' >> beam.io.ReadFromText(known_args.input_file)
+                             )
+            Decoded_Online_Input =(Topic_Input 
+                             | 'Decodeing the input Message' >> beam.Map(lambda x: x.decode('utf-8'))
+                             )
+            Spliting_Online_Input = (Decoded_Online_Input
+                             | 'Spliting Streaming Input' >> beam.ParDo(Split())
+                             )
+            Spliting_Batch_Input = (File_Input
+                             | 'Spliting Batch Input' >> beam.ParDo(Split())
+                             )
+            Merged_Inputs =  ((Spliting_Online_Input, Spliting_Batch_Input) 
+                             | 'Mergeing Inputs' >> beam.Flatten()
+                             )
+            Filtered_Data =  ( Merged_Inputs 
+                             | 'Filtering Data' >> beam.Filter(Filter_Data)
+                             )
+            Converted_Data = ( Filtered_Data 
+                             | 'Converting Datatype' >> beam.Map(Convert_Datatype)
+                             )
 
     if __name__ == '__main__':
         run()
 ```
 
-7. **Data wrangling**: Now we will do some data wrangling to make some more sense of the data in some columns. For Existing_account contain 3 characters. First character is an Aplhabet which signifies Month of the year and next 2 characters are numeric which signify days. So here as well we will use Map() to wrangle data. The output of this dataset is present by the name DataWrangle.
+8. **Data wrangling**: Now we will do some data wrangling to make some more sense of the data in some columns. For Existing_account contain 3 characters. First character is an Aplhabet which signifies Month of the year and next 2 characters are numeric which signify days. So here as well we will use Map() to wrangle data. The output of this dataset is present by the name DataWrangle.
 
 ```python
     ... 
@@ -287,26 +378,41 @@ Below are the steps to setup the enviroment and run the codes:
     ...
     def run(argv=None, save_main_session=True):
         ...
-        with beam.Pipeline(options=PipelineOptions()) as p:
-            encoded_data = ( p 
-                     | 'Read data' >> beam.io.ReadFromPubSub(topic=TOPIC).with_output_types(bytes))
-            data   = ( encoded_data
-                     | 'Decode' >> beam.Map(lambda x: x.decode('utf-8'))) 
-            parsed_data = (data 
-                     | 'Parsing Data' >> beam.ParDo(Split()))
-            filtered_data = (parsed_data
-                     | 'Filtering Data' >> beam.Filter(Filter_Data))
-            Converted_data = (filtered_data
-                     | 'Convert Datatypes' >> beam.Map(Convert_Datatype))
-            Wrangled_data = (Converted_data
-                     | 'Wrangling Data' >> beam.Map(Data_Wrangle)                  
-                     | 'Writing output' >> beam.io.WriteToText(known_args.output))
+        with beam.Pipeline(options=Options) as p:
+            Topic_Input   =  (p  
+                             | 'Read from Pub Sub' >> beam.io.ReadFromPubSub
+                              (topic=known_args.input_topic).with_output_types(bytes)
+                             )
+            File_Input  =    (p
+                             | 'Read from Cloud Storage Bucket' >> beam.io.ReadFromText(known_args.input_file)
+                             )
+            Decoded_Online_Input =(Topic_Input 
+                             | 'Decodeing the input Message' >> beam.Map(lambda x: x.decode('utf-8'))
+                             )
+            Spliting_Online_Input = (Decoded_Online_Input
+                             | 'Spliting Streaming Input' >> beam.ParDo(Split())
+                             )
+            Spliting_Batch_Input = (File_Input
+                             | 'Spliting Batch Input' >> beam.ParDo(Split())
+                             )
+            Merged_Inputs =  ((Spliting_Online_Input, Spliting_Batch_Input) 
+                             | 'Mergeing Inputs' >> beam.Flatten()
+                             )
+            Filtered_Data =  ( Merged_Inputs 
+                             | 'Filtering Data' >> beam.Filter(Filter_Data)
+                             )
+            Converted_Data = ( Filtered_Data 
+                             | 'Converting Datatype' >> beam.Map(Convert_Datatype)
+                             )
+            Wrangled_data =  ( Converted_Data
+                             | 'Data Wrangling' >> beam.Map(Data_Wrangle)
+                             )
 
     if __name__ == '__main__':
         run()
 ```
 
-8. **Delete Unwanted Columns**: After converting certain columns to sensable data we will remove redundant columns from the dataset. Output of this is present with the file name Delete_Unwanted_Columns text file.
+9. **Delete Unwanted Columns**: After converting certain columns to sensable data we will remove redundant columns from the dataset. Output of this is present with the file name Delete_Unwanted_Columns text file.
 
 ```python
     ...
@@ -318,28 +424,91 @@ Below are the steps to setup the enviroment and run the codes:
     ...
     def run(argv=None, save_main_session=True):
         ...
-        with beam.Pipeline(options=PipelineOptions()) as p:
-            encoded_data = ( p 
-                     | 'Read data' >> beam.io.ReadFromPubSub(topic=TOPIC).with_output_types(bytes))
-            data   = ( encoded_data
-                     | 'Decode' >> beam.Map(lambda x: x.decode('utf-8'))) 
-            parsed_data = (data 
-                     | 'Parsing Data' >> beam.ParDo(Split()))
-            filtered_data = (parsed_data
-                     | 'Filtering Data' >> beam.Filter(Filter_Data))
-            Converted_data = (filtered_data
-                     | 'Convert Datatypes' >> beam.Map(Convert_Datatype))
-            Wrangled_data = (Converted_data
-                     | 'Wrangling Data' >> beam.Map(Data_Wrangle))    
-            Cleaned_data = (Wrangled_data
-                     | 'Delete Unwanted Columns' >> beam.Map(Del_Unwanted)                 
-                     | 'Writing output' >> beam.io.WriteToText(known_args.output))
+        with beam.Pipeline(options=Options) as p:
+            Topic_Input   =  (p  
+                             | 'Read from Pub Sub' >> beam.io.ReadFromPubSub
+                              (topic=known_args.input_topic).with_output_types(bytes)
+                             )
+            File_Input  =    (p
+                             | 'Read from Cloud Storage Bucket' >> beam.io.ReadFromText(known_args.input_file)
+                             )
+            Decoded_Online_Input =(Topic_Input 
+                             | 'Decodeing the input Message' >> beam.Map(lambda x: x.decode('utf-8'))
+                             )
+            Spliting_Online_Input = (Decoded_Online_Input
+                             | 'Spliting Streaming Input' >> beam.ParDo(Split())
+                             )
+            Spliting_Batch_Input = (File_Input
+                             | 'Spliting Batch Input' >> beam.ParDo(Split())
+                             )
+            Merged_Inputs =  ((Spliting_Online_Input, Spliting_Batch_Input) 
+                             | 'Mergeing Inputs' >> beam.Flatten()
+                             )
+            Filtered_Data =  ( Merged_Inputs 
+                             | 'Filtering Data' >> beam.Filter(Filter_Data)
+                             )
+            Converted_Data = ( Filtered_Data 
+                             | 'Converting Datatype' >> beam.Map(Convert_Datatype)
+                             )
+            Wrangled_data =  ( Converted_Data
+                             | 'Data Wrangling' >> beam.Map(Data_Wrangle)
+                             )
+            Clean_Data  =    ( Wrangled_data
+                             | 'Deleting Unwanted Columns' >> beam.Map(Del_Unwanted)
+                             ) 
+
+    if __name__ == '__main__':
+        run()    
+```
+9. **Splitting Data**: Now we will split the data into two data streams to be pushed into different Bigquery Tables. To do this we will use **beam.Partition**. 
+```python
+    ...
+    def By_Classification(data , n):
+        Classification_type = [1,2]
+        return Classification_type.index(data['Classification'])
+    ...
+    def run(argv=None, save_main_session=True):
+        ...
+        with beam.Pipeline(options=Options) as p:
+            Topic_Input   =  (p  
+                             | 'Read from Pub Sub' >> beam.io.ReadFromPubSub
+                              (topic=known_args.input_topic).with_output_types(bytes)
+                             )
+            File_Input  =    (p
+                             | 'Read from Cloud Storage Bucket' >> beam.io.ReadFromText(known_args.input_file)
+                             )
+            Decoded_Online_Input =(Topic_Input 
+                             | 'Decodeing the input Message' >> beam.Map(lambda x: x.decode('utf-8'))
+                             )
+            Spliting_Online_Input = (Decoded_Online_Input
+                             | 'Spliting Streaming Input' >> beam.ParDo(Split())
+                             )
+            Spliting_Batch_Input = (File_Input
+                             | 'Spliting Batch Input' >> beam.ParDo(Split())
+                             )
+            Merged_Inputs =  ((Spliting_Online_Input, Spliting_Batch_Input) 
+                             | 'Mergeing Inputs' >> beam.Flatten()
+                             )
+            Filtered_Data =  ( Merged_Inputs 
+                             | 'Filtering Data' >> beam.Filter(Filter_Data)
+                             )
+            Converted_Data = ( Filtered_Data 
+                             | 'Converting Datatype' >> beam.Map(Convert_Datatype)
+                             )
+            Wrangled_data =  ( Converted_Data
+                             | 'Data Wrangling' >> beam.Map(Data_Wrangle)
+                             )
+            Clean_Data  =    ( Wrangled_data
+                             | 'Deleting Unwanted Columns' >> beam.Map(Del_Unwanted)
+                             ) 
+            Batch_BQ_Table, Streaming_BQ_Table = ( Clean_Data
+                             | 'Partitioning Data' >> beam.Partition(By_Classification, 2)
 
     if __name__ == '__main__':
         run()    
 ```
 
-9. **Inserting Data in Bigquery**: Final step in the Pipeline it to insert the data in Bigquery. To do this we will use **beam.io.WriteToBigQuery()** which requires Project id and a Schema of the target table to save the data. 
+10. **Inserting Data in Bigquery**: Final step in the Pipeline it to insert the data in Bigquery. To do this we will use **beam.io.WriteToBigQuery()** which requires Project id and a Schema of the target table to save the data. 
 
 ```python
     import apache_beam as beam
@@ -382,27 +551,54 @@ Below are the steps to setup the enviroment and run the codes:
         ...
         PROJECT_ID = known_args.project
         with beam.Pipeline(options=PipelineOptions()) as p:
-            encoded_data = ( p 
-                     | 'Read data' >> beam.io.ReadFromPubSub(topic=TOPIC).with_output_types(bytes))
-            data   = ( encoded_data
-                     | 'Decode' >> beam.Map(lambda x: x.decode('utf-8'))) 
-            parsed_data = (data 
-                     | 'Parsing Data' >> beam.ParDo(Split()))
-            filtered_data = (parsed_data
-                     | 'Filtering Data' >> beam.Filter(Filter_Data))
-            Converted_data = (filtered_data
-                     | 'Convert Datatypes' >> beam.Map(Convert_Datatype))
-            Wrangled_data = (Converted_data
-                     | 'Wrangling Data' >> beam.Map(Data_Wrangle))    
-            Cleaned_data = (Wrangled_data
-                     | 'Delete Unwanted Columns' >> beam.Map(Del_Unwanted)  
-            output =( Cleaned_data      
-                     | 'Writing to bigquery' >> beam.io.WriteToBigQuery(
-                       '{0}:GermanCredit.GermanCreditTable'.format(PROJECT_ID),
-                       schema=SCHEMA,
-                       write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND)
-                    )
-
+            Topic_Input   =  (p  
+                         | 'Read from Pub Sub' >> beam.io.ReadFromPubSub
+                              (topic=known_args.input_topic).with_output_types(bytes)
+                         )
+            File_Input  =    (p
+                             | 'Read from Cloud Storage Bucket' >> beam.io.ReadFromText(known_args.input_file)
+                             )
+            Decoded_Online_Input =(Topic_Input 
+                             | 'Decodeing the input Message' >> beam.Map(lambda x: x.decode('utf-8'))
+                             )
+            Spliting_Online_Input = (Decoded_Online_Input
+                             | 'Spliting Streaming Input' >> beam.ParDo(Split())
+                             )
+            Spliting_Batch_Input = (File_Input
+                             | 'Spliting Batch Input' >> beam.ParDo(Split())
+                             )
+            Merged_Inputs =  ((Spliting_Online_Input, Spliting_Batch_Input) 
+                             | 'Mergeing Inputs' >> beam.Flatten()
+                             )
+            Filtered_Data =  ( Merged_Inputs 
+                             | 'Filtering Data' >> beam.Filter(Filter_Data)
+                             )
+            Converted_Data = ( Filtered_Data 
+                             | 'Converting Datatype' >> beam.Map(Convert_Datatype)
+                             )
+            Wrangled_data =  ( Converted_Data
+                             | 'Data Wrangling' >> beam.Map(Data_Wrangle)
+                             )
+            Clean_Data  =    ( Wrangled_data
+                             | 'Deleting Unwanted Columns' >> beam.Map(Del_Unwanted)
+                             ) 
+            Batch_BQ_Table, Streaming_BQ_Table = ( Clean_Data
+                             | 'Partitioning Data' >> beam.Partition(By_Classification, 2)
+                             )
+            Streaming_Output = ( Streaming_BQ_Table 
+                             | 'Inserting Streaming Data in BigQuery' >> beam.io.WriteToBigQuery(
+                                '{0}:GermanCredit.GermanCreditTable'.format(known_args.project),
+                                 schema=SCHEMA,
+                                 write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND 
+                                 )
+                             ) 
+            Batch_Output =   ( Batch_BQ_Table 
+                             | 'Inserting Batch Data in BigQuery' >> beam.io.WriteToBigQuery(
+                                '{0}:GermanCredit.GermanCreditBatchTable'.format(known_args.project),
+                                 schema=SCHEMA,
+                                 write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND 
+                                 )
+                             ) 
     if __name__ == '__main__':
         run()        
 ```
@@ -411,30 +607,36 @@ Below are the steps to setup the enviroment and run the codes:
 To test the code we need to do the following:
 
     1. Copy the repository in Cloud SDK using below command:
-    git clone https://github.com/adityasolanki205/Streaming-Pipeline-using-DataFlow.git
+    git clone https://github.com/adityasolanki205/Merging-and-Spliting-in-DataFlow.git
     
-    2. Create a Storage Bucket in us-east1 with 2 separate folders temp and stream
+    2. Create a Storage Bucket by the name batch-pipeline-testing in us-east1 with 2 separate folders Temp and Stage
     
-    3. Create a Dataset in us-east1 by the name GermanCredit
+    3. Copy the data file in the cloud Bucket using the below command
+    cd Batch-Processing-Pipeline-using-DataFlow/data
+    gsutil cp german.data gs://batch-pipeline-testing/Batch/
     
-    4. Create a table in GermanCredit dataset by the name GermanCreditTable
+    4. Create a Dataset in us-east1 by the name GermanCredit
     
-    5. Create Pub Sub Topic by the name german_credit_data
+    5. Create 2 tables in GermanCredit dataset by the name GermanCreditTable and GermanCreditBatchTable using the Schema in the program
     
-    6. Install Apache Beam on the SDK using below command
+    6. Create Pub Sub Topic by the name german_credit_data
+    
+    7. Install Apache Beam on the SDK using below command
     sudo pip3 install apache_beam[gcp]
     
-    7. Run the command and see the magic happen:
-     python3 streaming-pipeline.py \
-     --runner DataFlowRunner \
-     --project trusty-field-283517 \
-     --temp_location gs://streaming_pipeline_testing/temp \
-     --staging_location gs://streaming_pipeline_testing/stream \
-     --region us-east1 \
-     --job_name germanstreaminganalysis \
-     --streaming 
+    8. Run the command and see the magic happen:
+     python3 merge_and_split_pipeline.py \
+    --project trusty-field-283517 \
+    --runner DataFlowRunner \
+    --temp_location gs://batch-pipeline-testing/Temp \
+    --staging_location gs://batch-pipeline-testing/Stage \
+    --input_file gs://batch-pipeline-testing/Batch/german.data \
+    --input_topic projects/trusty-field-283517/topics/german_credit_data \
+    --region us-east1 \
+    --job_name germanstreaminganalysis \
+    --streaming 
      
-    8. Open one more tab in cloud SDK and run below command 
+    9. Open one more tab in cloud SDK and run below command 
     python3 publish_to_pubsub.py
 
 ## Credits
