@@ -243,7 +243,7 @@ Below are the steps to setup the enviroment and run the codes:
                              )
             Merged_Inputs =  ((Spliting_Online_Input, Spliting_Batch_Input) 
                              | 'Mergeing Inputs' >> beam.Flatten()
-            
+                             )
     if __name__ == '__main__':
         run()
 ```
