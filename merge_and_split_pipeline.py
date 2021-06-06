@@ -173,11 +173,9 @@ def run(argv=None, save_main_session=True):
         Clean_Data  =    ( Wrangled_data
                          | 'Deleting Unwanted Columns' >> beam.Map(Del_Unwanted)
                          ) 
-        
         Batch_BQ_Table, Streaming_BQ_Table = ( Clean_Data
                          | 'Partitioning Data' >> beam.Partition(By_Classification, 2)
                          )
-        
         Streaming_Output = ( Streaming_BQ_Table 
                          | 'Inserting Streaming Data in BigQuery' >> beam.io.WriteToBigQuery(
                             '{0}:GermanCredit.GermanCreditTable'.format(known_args.project),
@@ -194,4 +192,3 @@ def run(argv=None, save_main_session=True):
                          ) 
 if __name__ == '__main__':
     run()
-
