@@ -145,11 +145,15 @@ def run(argv=None, save_main_session=True):
         dest='output_file',
         help='Bucket in which Pipeline has to be written'
     )
-    known_args, pipeline_args = parser.parser_known_args(argv)
+    known_args, pipeline_args = parser.parse_known_args(argv)
     Options = PipelineOptions(pipeline_args)
+    TOPIC ="projects/trusty-field-283517/topics/german_credit_data"
     with beam.Pipeline(options=Options) as p:
-        Topic_Input   =  (p  
+        '''Topic_Input   =  (p  
                          | 'Read from Pub Sub' >> beam.io.ReadFromPubSub(topic=known_args.input_topic).with_output_types(bytes)
+                         )'''
+        Topic_Input   =  (p  
+                         | 'Read from Pub Sub' >> beam.io.ReadFromPubSub(topic=TOPIC).with_output_types(bytes)
                          )
         File_Input  =    (p
                          | 'Read from Cloud Storage Bucket' >> beam.io.ReadFromText(known_args.input_file)
@@ -183,15 +187,15 @@ def run(argv=None, save_main_session=True):
                          )
         
         BQ_Output =      ( Partition_for_BQ 
-                         | 'Inserting Data in BigQuery' >> beam.WriteToBigQuery(
-                            '{0}:GermanCredit.GermanCreditTable'.format(PROJECT_ID),
+                         | 'Inserting Data in BigQuery' >> beam.io.WriteToBigQuery(
+                            '{0}:GermanCredit.GermanCreditTable'.format(known_args.project),
                              schema=SCHEMA,
                              write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND 
                              )
                          ) 
         GCS_Output =     ( Partition_for_GCS 
-                         | 'Writing a file in GCS' >> beam.WriteToText(known_args.output_file, file_name_suffix = '.json')                  
+                         | 'Writing a file in GCS' >> beam.io.WriteToText(known_args.output_file)                  
                          )
-if __name__ = '__main__':
+if __name__ == '__main__':
     run()
 
