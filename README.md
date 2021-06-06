@@ -616,7 +616,8 @@ To test the code we need to do the following:
     
     4. Create a Dataset in us-east1 by the name GermanCredit
     
-    5. Create 2 tables in this dataset by the name GermanCreditTable and GermanCreditBatchTable using Schema
+    5. Create 2 tables in this dataset by the name GermanCreditTable and GermanCreditBatchTable 
+    using Schema provided in the programs
     
     6. Create Pub Sub Topic by the name german_credit_data
     
